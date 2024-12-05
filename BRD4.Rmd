@@ -8,15 +8,17 @@ date: "2024-11-20"
 knitr::opts_chunk$set(echo = TRUE)
 
 library(data.table)
-library(gUtils) ## https://github.com/mskilab-org/gUtils
-library(ggplot2)
-library(gTrack) ## https://github.com/mskilab-org/gTrack
 library(tidyverse)
 library(ggpubr)
+library(ggplot2)
+
+library(gUtils) ## https://github.com/mskilab-org/gUtils
+library(gTrack) ## https://github.com/mskilab-org/gTrack
 
 ## load the metadata
 homepath <- "~/Dropbox/ICGC/"
 dt.m <- fread(file.path(homepath, "pcawg_metadata.tsv"))[!duplicated(aliquot_id)]
+## above is also available at https://github.com/ICGC-TCGA-PanCancer/pcawg-metadata/blob/main/pcawg-published-original-metadata/pcawg_donor_clinical_August2016_v9.tsv
 
 ## function to get overlaps between ranges A and single range B, such that ranges have to have an end in the range B
 gr.findoverlaps.end <- function(A, B) {
@@ -45,6 +47,60 @@ gr.findoverlaps.end <- function(A, B) {
   A.filtered <- A[A_indices[valid_overlaps]]
   return(A.filtered)
 }
+
+
+create_beeswarm_plot <- function(data, x_var, y_var, withbox=FALSE, dx_combos=NA, fill_var=NA) {
+  #dx_combos <- list(c("tipMMR","tdpMMR"),c("tipMMR","dMMR"),c("dMMR","tdpMMR"))
+  #dx_combos <- list(c("Control","Progression"))
+  #dx_combos <- list(c("Mut","WT"))
+ # dx_combos <- list(c("focal","no"))
+  #dx_combos <- list(c("Pre","Post"))
+  #dx_combos  <- list(c("PD","PR"),c("PD","SD"),c("SD","PR"))
+  #dx_combos <- list(c("High","Low"))
+  #dx_combos <- list(c("Mut","WT"))
+  
+  if (is.na(fill_var))
+    fill_var = x_var
+  
+  g <- ggplot(data, aes_string(x = x_var, y = y_var)) 
+  
+  g <- g + ggbeeswarm::geom_quasirandom(
+      shape = 21, color = "black",
+      alpha = 1, size = 2,
+      aes(fill = .data[[fill_var]])
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.title = element_text(size = 10, face = "bold"),
+      axis.text = element_text(size = 10)
+    )
+  if (!is.na(dx_combos)) {
+    g <- g + ggpubr::stat_compare_means(comparisons = dx_combos, label = "p.signif",
+                       method="wilcox.test") # Add significance levels
+  }
+
+  if (withbox)
+    g <- g + geom_boxplot(width = 0.2,                                                                                                                                                  
+                          outlier.shape = NA,                                                                                                                                           
+                          alpha = 0.5,
+                          fill=NA,
+                          color="red")
+  g
+}
+
+sig_display <- function(p) {
+  
+  if (p > 0.05)
+    return ("NS")
+  if (p > 0.01)
+    return ("*")
+  if (p > 0.001)
+    return("**")
+  return("***")
+}
 ```
 
 ```{r GTEx-expression}
@@ -52,19 +108,13 @@ gr.findoverlaps.end <- function(A, B) {
 ### Simona Dalin
 ### 4/16/24
 
-library(data.table)
-library(tidyverse)
-library(ggpubr)
-
-setwd("~/Dropbox/ICGC/SimonaHelpedVeronicaInMarch2024/")
-
 allBRD4ProteinCodingTranscripts <- c("ENST00000679869.1", "ENST00000263377.6", "ENST00000371835.8", "ENST00000360016.9", "ENST00000594841.5", "ENST00000601941.1")
 mergedEnsemblHavanaBRD4Transcripts <- c("ENST00000263377.6", "ENST00000371835.8")
 
 ## load the data
-breast <- fread("gene_tpm_2017-06-05_v8_breast.csv")
-ovary  <- fread("gene_tpm_2017-06-05_v8_ovary.csv")
-metadata <- fread("GTEx_metadata.txt")
+breast <- fread("~/Dropbox/ICGC/SimonaHelpedVeronicaInMarch2024/gene_tpm_2017-06-05_v8_breast.csv")
+ovary  <- fread("~/Dropbox/ICGC/SimonaHelpedVeronicaInMarch2024/gene_tpm_2017-06-05_v8_ovary.csv")
+metadata <- fread("~/Dropbox/ICGC/SimonaHelpedVeronicaInMarch2024/GTEx_metadata.txt")
 
 # Only run these lines if you loaded the full GTEx file
 #gctFile <- fread("GTEx_Analysis_2017-06-05_v8_RSEMv1.3.0_transcript_tpm.gct.gz")
@@ -75,19 +125,19 @@ metadata <- fread("GTEx_metadata.txt")
 #rm(list = "gctFile")
 
 ## get the BRD4 transcripts
-filteredRowsMergedEnsemblHavana <- fread("GTEx_only_BRD4_merged_ensemble_havana_transcripts_all_tissues.csv") ## only 2 transcripts
-filteredRowsAllProteinCoding    <- fread("GTEx_only_BRD4_protein_coding_transcripts_all_tissues.csv")         ## 5 transcripts
+filteredRowsMergedEnsemblHavana <- fread("~/Dropbox/ICGC/SimonaHelpedVeronicaInMarch2024/GTEx_only_BRD4_merged_ensemble_havana_transcripts_all_tissues.csv") ## only 2 transcripts
+filteredRowsAllProteinCoding    <- fread("~/Dropbox/ICGC/SimonaHelpedVeronicaInMarch2024/GTEx_only_BRD4_protein_coding_transcripts_all_tissues.csv")         ## 5 transcripts
 
 ## get the sample names
 breastSampleIDs <- colnames(breast)[4:ncol(breast)]
 ovarySampleIDs  <- colnames(ovary)[4:ncol(ovary)]
 
 ## subset Havana for ovarian and breast
-breastTranscriptsMergedEnsemblHavana <- filteredRowsMergedEnsemblHavana %>% select(transcript_id, gene_id, all_of(breastSampleIDs))
+breastTranscriptsMergedEnsemblHavana <- filteredRowsMergedEnsemblHavana[, .(transcript_id, gene_id, ..breastSampleIDs)]
 ovaryTranscriptsMergedEnsemblHavana  <- filteredRowsMergedEnsemblHavana %>% select(transcript_id, gene_id, all_of(ovarySampleIDs))
 
 ## subset protein coding for ovarian and breast
-breastTranscriptsAllProteinCoding <- filteredRowsAllProteinCoding %>% select(transcript_id, gene_id, all_of(breastSampleIDs))
+breastTranscriptsMergedEnsemblHavana <- filteredRowsMergedEnsemblHavana %>% select(transcript_id, gene_id, all_of(breastSampleIDs))
 ovaryTranscriptsAllProteinCoding <- filteredRowsAllProteinCoding %>% select(transcript_id, gene_id, all_of(ovarySampleIDs))
 
 ## subset metadata
@@ -137,9 +187,10 @@ filteredRowsAllProteinCodingWithTissueAnnotation$SMTS <-
          levels = ordered_data$SMTS)
 
 ## make the GTEx expression plot
-g <- filteredRowsAllProteinCodingWithTissueAnnotation %>% 
-  filter(`BRD4 Transcript` %in% c("Long", "Short")) %>% 
-  ggplot(aes(x = SMTS, y = expression, fill = `BRD4 Transcript`)) +
+dt.ta <- as.data.table(filteredRowsAllProteinCodingWithTissueAnnotation)
+setnames(dt.ta, "BRD4 Transcript", "BRD4_Transcript")
+dt.ta <- dt.ta[transcript_id %in% c("ENST00000263377.6", "ENST00000360016.9")]
+g <- ggplot(dt.ta, aes(x = SMTS, y = expression, fill = transcript_id)) +
   geom_boxplot(outliers=FALSE) +
   theme_classic() +
   theme(axis.text.x = element_text(size = 15, vjust = 1, hjust = 0.5, family = "Helvetica", colour = "black"),
@@ -151,10 +202,10 @@ g <- filteredRowsAllProteinCodingWithTissueAnnotation %>%
         legend.position = "top",
         legend.box.background = element_rect(fill = "transparent", colour = "transparent"),
         legend.key = element_rect(fill = "transparent", colour = "transparent")) +
-  scale_fill_manual(values=c("Short"="#f1a340", Long="#998ec3")) + 
+  scale_fill_manual(values=c("ENST00000360016.9"="#f1a340", "ENST00000263377.6"="#998ec3")) + 
   labs(y = "Expression (TPM)") +
   scale_y_continuous(expand = c(0, 0)) +
-  geom_pwc(aes(group = `BRD4 Transcript`),
+  geom_pwc(aes(group = transcript_id),
            method = "wilcox_test", 
            label = "{p.adj.signif}",
            p.adjust.method = "fdr", p.adjust.by = "panel",
@@ -163,7 +214,26 @@ g <- filteredRowsAllProteinCodingWithTissueAnnotation %>%
            remove.bracket = TRUE) +
   coord_flip()
 
-ggsave(filename = "~/Dropbox/ICGC/figs/allProteinCodingBRD4IsoformsPlot.pdf", 
+# Perform paired Wilcoxon tests for each SMTS condition
+stat_results <- dt.ta[,
+  {
+    # Split data into paired groups
+    long_expr <- expression[transcript_id == "ENST00000263377.6"]
+    short_expr <- expression[transcript_id == "ENST00000371835.8"]
+    
+    # Ensure pairing is correct
+    if (length(long_expr) == length(short_expr)) {
+      test <- wilcox.test(long_expr, short_expr, paired = TRUE)
+      list(p_value = test$p.value)  # Store the p-value
+    } else {
+      list(p_value = NA)  # Handle mismatch in lengths
+    }
+  },
+  by = SMTS
+]
+stat_results[, p_adj := p.adjust(p_value, method = "fdr")]
+
+ggsave(filename = "~/Dropbox/ICGC/figs/allProteinCodingBRD4IsoformsPlot_FIXED.pdf", 
        plot = g, 
        device = "pdf", width = 7, height = 10)
 ```
@@ -271,6 +341,9 @@ Now we can analyze the copy-number data
 
 ```{r copy-number}
 
+#####
+## aws s3 ls s3://icgc25k-open/PCAWG/consensus_sv/ --endpoint-url https://object.genomeinformatics.org --no-sign-request
+
 ### get the copy-number data list
 files.cn <- c(list.files(path=file.path(homepath, "BRD4_Sophie/data/consensus_SCNA/icgc"), full.names=TRUE),
 list.files(path=file.path(homepath, "BRD4_Sophie/data/consensus_SCNA/tcga"), full.names=TRUE))
@@ -286,7 +359,7 @@ dt.cn <- merge(dt.cn, dt.m[,.(donor_unique_id, dcc_project_code, aliquot_id)], b
 gr.cn <- suppressWarnings(dt2gr(dt.cn))
 
 ## Overlap copy-number segments with BRD4 range
-brd4_overlap <- GRanges(19, IRanges(15.3e6,15.47e6)) ## hg19 coordinates
+brd4_overlap <- GRanges(19, IRanges(15.2e6,15.47e6)) ## hg19 coordinates
 gr.cn_filtered <- gr.findoverlaps.end(gr.cn, brd4_overlap)
 
 ## All CN events for tumors with copy-number breakpoint in BRD4 range
@@ -304,7 +377,7 @@ other.aliquot <- c("f38b5d2e-5cab-45c7-bb0a-38b2efc5c156",
                    "b54b9433-ec10-4cb5-a860-4555da64917b")
 dcc <- do.call('c',lapply(unique(other.aliquot), function(x) { ##brca.cn$aliquot_id
    a1 <- gr.cn_filtered.all[gr.cn_filtered.all$aliquot_id==x] ## all of
-   fo <- queryHits(findOverlaps(a1, brd4))
+   fo <- queryHits(findOverlaps(a1, brd4_overlap))
    a1.overlap <- a1[fo]
    if (length(fo) > 0 && any(diff(a1.overlap$total_cn) != 0) && !x %in% nodels) {
      max.cn <- max(a1$total_cn[fo],na.rm=TRUE)
@@ -335,7 +408,7 @@ focal_deletion_cases_ov <- c("e4aaca83-3ae9-47f6-a975-c144767ad705", #OV-AU::AOC
                              "44eebc04-c027-45ae-beca-c4012b494f29", #OV-US::c9e28934-8379-4511-817c-d787f2c4ca3a
                              "14ed7388-41ed-43d4-afb2-04cd6410d5d2", #OV-US::62379be5-13f0-474b-94d3-6f944ec4ee96
                              "1dc9e7fd-fc62-4b32-9619-4e02a266a385", #OV-US::f0c353fd-947c-41e2-b643-3ecc0d69796c
-                             "1659bae5-3140-4d05-891c-81b48277b2fc", #OV-AU::AOCS-159 ## missed SCNA -- actually we don't have CN data
+                             "1659bae5-3140-4d05-891c-81b48277b2fc", #OV-AU::AOCS-159 ## missed SCNA 
                              "f26b1f44-12de-43ba-85bb-bc61741a5a88", #OV-AU::AOCS-128 ## missed SCNA
                              "941fcb56-e059-403d-aab1-0692a3ecc45e") #OV-AU::AOCS-083 ## missed SCNA
 focal_deletion_cases_endo <- c("493e7008-551c-4c0e-b567-a0f31868629e", #UCEC-US::5d2f1a0f-a01b-48c2-b749-1ca710aa2bb4
@@ -344,12 +417,35 @@ focal_deletion_cases_endo <- c("493e7008-551c-4c0e-b567-a0f31868629e", #UCEC-US:
                               "f7dcc2e4-1fc4-4b39-bc6a-720e66116d68")  #UCEC-US::9205c164-7975-421a-90c3-edfe8def595c ## missed by SCNA
 focal_deletion_cases_other <- c("f38b5d2e-5cab-45c7-bb0a-38b2efc5c156",
                                 "6051f40a-99e5-4461-9255-0e70d757b4d5")
+cliff_deletion_cases_breast <- c("fc9ef456-75a2-5967-e040-11ac0c484477")
+cliff_deletion_cases_endo <- c("ed32c725-08ae-48eb-8fa2-719b9aeb7550", #UCEC-US::8d9e4917-334b-4c76-aee1-1e22be772db0
+                               "cc19a480-9c66-4ee8-a0c0-921acac02689") #UCEC-US::c88e3901-f3ee-436a-ba80-143c8eab7d69
+cliff_deletion_cases_ov <- c("80f02aec-c07a-4bcb-b547-e60f8c33a7b1",
+                             "bbb2cf2f-8f32-43d4-846c-d1020e6329ec",
+                             "d67cad13-e849-48b0-926c-10b6046ba0b9")
 
 all_focal <- c(focal_deletion_cases_breast,
                focal_deletion_cases_ov,
                focal_deletion_cases_endo,
                focal_deletion_cases_other)
+
 stopifnot(all(all_focal %in% dt.m$aliquot_id))
+all_cliff <- c(cliff_deletion_cases_breast, cliff_deletion_cases_endo, cliff_deletion_cases_ov)
+all_cases <- c(all_focal, all_cliff)
+
+## donor_unique_id of all tumors with focal deletions
+## these are also obtainable from the all_focal IDs above, so hard-coding here is just a sanity check
+all_focal_donor_id <- c("BRCA-US::b97bf89a-7a85-4eef-ae7e-f787aead1f0a", "BRCA-US::6fa2a667-9c36-4526-8a58-1975e863a806",
+                        "BRCA-US::65cac997-4d39-4501-85ec-4fcb328a8eb5", "BRCA-US::174850b4-5ec2-462b-a890-89bd1716b3c2",
+                        "BRCA-US::4da999a0-ef41-4a0b-b1d1-446b39cc855a", "BRCA-UK::CGP_donor_1199131",
+                        "OV-AU::AOCS-055", "OV-US::0c1a2e7d-e7e4-481e-a012-ef214c444497",
+                        "OV-AU::AOCS-059", "OV-AU::AOCS-119",
+                        "OV-US::c9e28934-8379-4511-817c-d787f2c4ca3a", "OV-US::62379be5-13f0-474b-94d3-6f944ec4ee96",
+                        "OV-US::f0c353fd-947c-41e2-b643-3ecc0d69796c", "OV-AU::AOCS-159",
+                        "OV-AU::AOCS-128", "OV-AU::AOCS-083",
+                        "UCEC-US::5d2f1a0f-a01b-48c2-b749-1ca710aa2bb4", "UCEC-US::e1e8dc66-467c-48a5-be56-3db4f665b9f1",
+                        "UCEC-US::e56491af-718f-4ca1-b3cd-0e5b3154697b", "UCEC-US::9205c164-7975-421a-90c3-edfe8def595c",
+                        "COAD-US::5116e3b4-2bac-40f5-8046-b9c1783faaa5", "COAD-US::a512701f-88bb-4b05-8c94-fd285b9dd13e")
 
 color_scheme <- c("focal"="black", "no"="black")
 ```
@@ -428,11 +524,118 @@ plot(c(tg, scna.track,grt.other.track, grt.br.track, grt.ov.track), windows=brd4
 
 ```
 
+```{r SCNA-Figure-1d}
+# Author: Sophie Webster (swebster@broadinstitute.org)
+# Contact: Rameen Beroukhim (rameen_beroukhim@dfci.harvard.edu)
+# Date last updated: July 17, 2024
+
+# License: GNU GPL2, Copyright (C) 2024 Dana-Farber Cancer Institute
+
+# get SCNA status of BRD4 locus
+brd4 <- GRanges(19, IRanges(15.21e6,15.37e6)) ## hg19 coordinates
+gr.cn.brd4 <- gr2dt(gr.findoverlaps(gr.cn, brd4_overlap))
+gr.cn.brd4[, donor_unique_id := gr.cn$donor_unique_id[query.id]]
+gr.cn.brd4[, total_cn := gr.cn$total_cn[query.id]]
+gr.cn.brd4[, mean_cn := sum(width * total_cn, na.rm=TRUE) / sum(width), by=donor_unique_id]
+
+## what samples have amplifications
+amp_samples_with_focal_del <- intersect(gr.cn.brd4[mean_cn > 2, donor_unique_id], all_focal_donor_id) ## 20/22
+amp_samples_without_focal_del <- setdiff(gr.cn.brd4[mean_cn > 2, donor_unique_id], all_focal_donor_id) ## 20/22
+
+amp_del = length(amp_samples_with_focal_del)
+unamp_del = 22 - amp_del
+amp_undel = length(amp_samples_without_focal_del)
+unamp_undel = 2636 - amp_undel
+
+length(amp_samples_with_focal_del) / 22 ## 20/22
+length(amp_samples_without_focal_del) / (length(unique(gr.cn$donor_unique_id))-22) ## 734 / 2636
+
+## statistical test
+gone_fishing <-
+  matrix(c(amp_del, unamp_del, amp_undel, unamp_undel),
+         nrow = 2,
+         dimnames = list(Amplified = c("Yes", "No"),
+                         Deletion = c("Yes", "No")))
+tested <- fisher.test(gone_fishing)
+
+# plot fisher's test as bar plot
+fishing_fractions <-
+  matrix(c(amp_del/(unamp_del+amp_del)*100, unamp_del/(unamp_del+amp_del)*100, amp_undel/(unamp_undel+amp_undel)*100, unamp_undel/(unamp_undel+amp_undel)*100),
+         nrow = 2,
+         dimnames = list(Amplified = c("Yes", "No"),
+                         Deletion = c("Yes", "No")))
+
+# Labels for the x-axis
+group_labels <- c("Yes\n(n = 22)", "No\n(n = 2,636)")
+
+# Colors for the bars
+bar_colors <- c("#b72a26", "#396cb4")
+
+# create dataframe from contingency table
+x <- c()
+for (row in rownames(gone_fishing)) {
+  for (col in colnames(gone_fishing)) {
+    x <- rbind(x, matrix(rep(c(row, col), gone_fishing[row, col]), ncol = 2, byrow = TRUE))
+  }
+}
+plot_fish <- as.data.frame(x)
+colnames(plot_fish) <- c("Amplified BRD4?", "Deletion in BRD4?")
+
+# show "deletion? yes/no" on the x axis
+# i find this more visually appealing but it seems like a less relevant interpretation than having "amp? yes/no" on x
+library(ggstatsplot)
+p <- ggbarstats(
+  plot_fish, `Amplified BRD4?`, `Deletion in BRD4?`,
+  results.subtitle = FALSE,
+  subtitle = paste0(
+    "Fisher's exact test", ", p-value = ",
+    round(tested$p.value, 5)
+  )
+) + theme(text=element_text(size=18)) +
+  scale_fill_manual(values=c("#b72a26", "#396cb4"))
+#labs(x=expression("Deletion in BRD4?"), fill=expression("Amplified " * italic("BRD4") * "?"))
+
+ggsave(paste0(workdir, "/Sophie/BRD4/results/20240718_fishers_test/", fileDate,"_brd4_amplification_deletion_fishers_bar_plot.pdf"), plot=p)
+```
+
 Now let's compare the copy-number for CCNE comparing BRD4-focal dels and not. This makes Figure 1B and C
 
 ```{r CCNE-copy-number}
 
-## get the average CCNE1 copy-number
+## get the average NOTCH3 copy-number
+notch3 <- GRanges(19, IRanges(15267849,15313806))
+fo <- findOverlaps(gr.cn, notch3)
+dtt <- gr2dt(gr.cn[queryHits(fo)])
+dtt[, start := pmax(start, start(notch3))]
+dtt[, end := pmin(end, end(notch3))]
+dtt[, width := end - start]
+dtt[, average_cn_notch3 := width * total_cn / width(notch3), by="donor_unique_id"]
+dtt[, is_focal := ifelse(aliquot_id %in% all_focal, "focal","no")]
+dtt <- dtt[!duplicated(donor_unique_id)]
+stopifnot(sum(dtt$is_focal=="focal")==22)
+
+## CCNE1 copy number plot for All Tumors
+focal_plot <- create_beeswarm_plot(dx_combos=list(c("focal","no")), 
+                                   dtt,
+                                   #dtt[grepl("^(BRCA|OV|UCEC)", donor_unique_id)], 
+                                   x_var="is_focal", y_var="average_cn_notch3", withbox=TRUE) + 
+  scale_y_log10(breaks = c(0.3, 1, 3, 10, 30, 100)) + 
+scale_fill_manual(values=color_scheme) + ylab("Average NOTCH3 copy number") +
+  theme(
+    axis.title.x = element_text(size = 9, family = "Helvetica", color="black"),
+    axis.title.y = element_text(size = 9, family = "Helvetica", color="black"),
+    axis.text = element_text(color = "black"),                  # axis tick labels
+    axis.line = element_line(color = "black"),                  # axis lines
+    axis.ticks = element_line(color = "black"),                 # axis tick marks
+    panel.border = element_rect(color = "black", fill = NA),    # panel border
+    panel.grid = element_blank()
+  )
+dtt[is_focal=="focal", median(average_cn_notch3)]
+dtt[is_focal=="no", median(average_cn_notch3)]
+wilcox.test(dtt[is_focal=="focal", average_cn_notch3], dtt[is_focal=="no" , average_cn_notch3])
+ggsave("~/Dropbox/ICGC/figs/NOTCH3_bee_allfocal_UPDATED.pdf", focal_plot, width=2, height=2) 
+
+## get the average NOTCH3 copy-number
 ccne1 <- GRanges(19, IRanges(30300898,30317219))
 fo <- findOverlaps(gr.cn, ccne1)
 dtt <- gr2dt(gr.cn[queryHits(fo)])
@@ -445,12 +648,12 @@ dtt <- dtt[!duplicated(donor_unique_id)]
 stopifnot(sum(dtt$is_focal=="focal")==22)
 
 ## CCNE1 copy number plot for All Tumors
-focal_plot <- create_beeswarm_plot(dx_combos=list(c("focal","no")), 
-                                   dtt,
-                                   #dtt[grepl("^(BRCA|OV|UCEC)", donor_unique_id)], 
+dttt = dtt[grepl("^(BRCA|OV|UCEC)", donor_unique_id)]
+dttt = dtt
+focal_plot <- create_beeswarm_plot(dx_combos=list(c("focal","no")), dttt,
                                    x_var="is_focal", y_var="average_cn_ccne1", withbox=TRUE) + 
   scale_y_log10(breaks = c(0.3, 1, 3, 10, 30, 100)) + 
-scale_fill_manual(values=color_scheme) + ylab("Average CCNE1 copy number") +
+scale_fill_manual(values=color_scheme) + ylab("Average NOTCH3 copy number") +
   theme(
     axis.title.x = element_text(size = 9, family = "Helvetica", color="black"),
     axis.title.y = element_text(size = 9, family = "Helvetica", color="black"),
@@ -460,8 +663,13 @@ scale_fill_manual(values=color_scheme) + ylab("Average CCNE1 copy number") +
     panel.border = element_rect(color = "black", fill = NA),    # panel border
     panel.grid = element_blank()
   )
-wilcox.test(dtt[is_focal=="focal", average_cn_ccne1], dtt[is_focal=="no" , average_cn_ccne1])
-ggsave("~/Dropbox/ICGC/figs/CCNE1_bee_allfocal_UPDATED.pdf", focal_plot, width=2, height=2) 
+dttt[is_focal=="focal", median(average_cn_ccne1)]
+dttt[is_focal=="no", median(average_cn_ccne1)]
+dttt[is_focal=="focal", mean(average_cn_ccne1)]
+dttt[is_focal=="no", mean(average_cn_ccne1)]
+wilcox.test(dttt[is_focal=="focal", average_cn_ccne1], dttt[is_focal=="no" , average_cn_ccne1])
+
+ggsave("~/Dropbox/ICGC/figs/CCNE1_bee_allfocal_ALLTUMORS_UPDATED.pdf", focal_plot, width=2, height=2) 
 
 ## CCNE1 copy number plot for just BRCA/UCEC/OV
 dtt.gyn <- dtt[grepl("^(BRCA|OV|UCEC)", donor_unique_id)]
@@ -506,19 +714,6 @@ fisher.test(matrix(c(2,2280,15,2658), nrow=2))
 ```{r expression-analysis-figure-2}
 homepath <- "~/Dropbox/ICGC/"
 
-## donor_unique_id of all tumors with focal deletions
-## these are also obtainable from the all_focal IDs above, so hard-coding here is just a sanity check
-all_focal_donor_id <- c("BRCA-US::b97bf89a-7a85-4eef-ae7e-f787aead1f0a", "BRCA-US::6fa2a667-9c36-4526-8a58-1975e863a806",
-                        "BRCA-US::65cac997-4d39-4501-85ec-4fcb328a8eb5", "BRCA-US::174850b4-5ec2-462b-a890-89bd1716b3c2",
-                        "BRCA-US::4da999a0-ef41-4a0b-b1d1-446b39cc855a", "BRCA-UK::CGP_donor_1199131",
-                        "OV-AU::AOCS-055", "OV-US::0c1a2e7d-e7e4-481e-a012-ef214c444497",
-                        "OV-AU::AOCS-059", "OV-AU::AOCS-119",
-                        "OV-US::c9e28934-8379-4511-817c-d787f2c4ca3a", "OV-US::62379be5-13f0-474b-94d3-6f944ec4ee96",
-                        "OV-US::f0c353fd-947c-41e2-b643-3ecc0d69796c", "OV-AU::AOCS-159",
-                        "OV-AU::AOCS-128", "OV-AU::AOCS-083",
-                        "UCEC-US::5d2f1a0f-a01b-48c2-b749-1ca710aa2bb4", "UCEC-US::e1e8dc66-467c-48a5-be56-3db4f665b9f1",
-                        "UCEC-US::e56491af-718f-4ca1-b3cd-0e5b3154697b", "UCEC-US::9205c164-7975-421a-90c3-edfe8def595c",
-                        "COAD-US::5116e3b4-2bac-40f5-8046-b9c1783faaa5", "COAD-US::a512701f-88bb-4b05-8c94-fd285b9dd13e")
 focal_donor_ids = dt.m[aliquot_id %in% all_focal, donor_unique_id] ## this is just matching samples to above
 stopifnot(all(focal_donor_ids %in% all_focal_donor_id)) ## hardcode and matching should be equal, its just a sanity check
 stopifnot(all(all_focal_donor_id %in% focal_donor_ids))
